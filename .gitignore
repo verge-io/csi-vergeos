@@ -1,0 +1,12 @@
+# Build artifacts
+bin/
+csi-vergeos
+
+# IDE and tool config
+.claude/
+.mcp.json
+*.DS_Store
+
+# OS files
+.DS_Store
+Thumbs.db

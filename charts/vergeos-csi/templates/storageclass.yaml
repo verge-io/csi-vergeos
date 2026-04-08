@@ -1,0 +1,29 @@
+{{- if and .Values.nas.enabled .Values.nas.storageClass.enabled }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.nas.storageClass.name }}
+provisioner: csi-nas.verge.io
+parameters:
+  nasServiceName: {{ .Values.nas.storageClass.nasServiceName | quote }}
+  {{- if .Values.nas.storageClass.nasServiceIP }}
+  nasServiceIP: {{ .Values.nas.storageClass.nasServiceIP | quote }}
+  {{- end }}
+  preferredTier: {{ .Values.nas.storageClass.preferredTier | quote }}
+reclaimPolicy: {{ .Values.nas.storageClass.reclaimPolicy }}
+allowVolumeExpansion: false
+volumeBindingMode: {{ .Values.nas.storageClass.volumeBindingMode }}
+{{- end }}
+{{- if and .Values.block.enabled .Values.block.storageClass.enabled }}
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.block.storageClass.name }}
+provisioner: csi-block.verge.io
+parameters:
+  interface: {{ .Values.block.storageClass.interface | quote }}
+reclaimPolicy: {{ .Values.block.storageClass.reclaimPolicy }}
+allowVolumeExpansion: false
+volumeBindingMode: {{ .Values.block.storageClass.volumeBindingMode }}
+{{- end }}

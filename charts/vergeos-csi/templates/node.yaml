@@ -1,0 +1,192 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ include "vergeos-csi.name" . }}-node
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: {{ include "vergeos-csi.name" . }}-node
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "vergeos-csi.name" . }}-node
+  template:
+    metadata:
+      labels:
+        app: {{ include "vergeos-csi.name" . }}-node
+    spec:
+      serviceAccountName: {{ include "vergeos-csi.name" . }}
+      hostNetwork: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- if .Values.nas.enabled }}
+        # --- NAS Node Driver ---
+        - name: csi-vergeos-nas
+          image: {{ include "vergeos-csi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--driver=nas"
+            - "--mode=node"
+            - "--endpoint=unix:///csi-nas/csi.sock"
+            - "--node-id=$(NODE_NAME)"
+            - "--v={{ .Values.logLevel }}"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: {{ include "vergeos-csi.secretName" . }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+          resources:
+            {{- toYaml .Values.node.resources | nindent 12 }}
+        {{- end }}
+
+        {{- if .Values.block.enabled }}
+        # --- Block Node Driver ---
+        - name: csi-vergeos-block
+          image: {{ include "vergeos-csi.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - "--driver=block"
+            - "--mode=node"
+            - "--endpoint=unix:///csi-block/csi.sock"
+            - "--node-id=$(NODE_NAME)"
+            - "--v={{ .Values.logLevel }}"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: {{ include "vergeos-csi.secretName" . }}
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: device-dir
+              mountPath: /dev
+          resources:
+            {{- toYaml .Values.node.resources | nindent 12 }}
+        {{- end }}
+
+        {{- if .Values.nas.enabled }}
+        # --- NAS Node Driver Registrar ---
+        - name: nas-registrar
+          image: {{ .Values.sidecars.registrar.image }}
+          args:
+            - "--csi-address=/csi-nas/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-nas.verge.io/csi.sock"
+            - "--v={{ .Values.logLevel }}"
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+            - name: registration-dir
+              mountPath: /registration
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+        {{- end }}
+
+        {{- if .Values.block.enabled }}
+        # --- Block Node Driver Registrar ---
+        - name: block-registrar
+          image: {{ .Values.sidecars.registrar.image }}
+          args:
+            - "--csi-address=/csi-block/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-block.verge.io/csi.sock"
+            - "--v={{ .Values.logLevel }}"
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+            - name: registration-dir
+              mountPath: /registration
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+        {{- end }}
+
+        {{- if .Values.nas.enabled }}
+        # --- Liveness Probe (NAS) ---
+        - name: liveness-probe-nas
+          image: {{ .Values.sidecars.liveness.image }}
+          args:
+            - "--csi-address=/csi-nas/csi.sock"
+            - "--http-endpoint=:9808"
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+        {{- end }}
+
+        {{- if .Values.block.enabled }}
+        # --- Liveness Probe (Block) ---
+        - name: liveness-probe-block
+          image: {{ .Values.sidecars.liveness.image }}
+          args:
+            - "--csi-address=/csi-block/csi.sock"
+            - "--http-endpoint=:9809"
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+        {{- end }}
+
+      volumes:
+        {{- if .Values.nas.enabled }}
+        - name: nas-socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-nas.verge.io/
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.block.enabled }}
+        - name: block-socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-block.verge.io/
+            type: DirectoryOrCreate
+        {{- end }}
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+        {{- if .Values.block.enabled }}
+        - name: device-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        {{- end }}

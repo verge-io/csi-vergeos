@@ -1,0 +1,185 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-vergeos-node
+  namespace: kube-system
+  labels:
+    app: csi-vergeos-node
+spec:
+  selector:
+    matchLabels:
+      app: csi-vergeos-node
+  template:
+    metadata:
+      labels:
+        app: csi-vergeos-node
+    spec:
+      serviceAccountName: csi-vergeos
+      hostNetwork: false
+      containers:
+        # --- NAS Node Driver ---
+        - name: csi-vergeos-nas
+          image: vergeio/csi-vergeos:latest
+          args:
+            - "--driver=nas"
+            - "--mode=node"
+            - "--endpoint=unix:///csi-nas/csi.sock"
+            - "--node-id=$(NODE_NAME)"
+            - "--v=5"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: vergeos-credentials
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # --- Block Node Driver ---
+        - name: csi-vergeos-block
+          image: vergeio/csi-vergeos:latest
+          args:
+            - "--driver=block"
+            - "--mode=node"
+            - "--endpoint=unix:///csi-block/csi.sock"
+            - "--node-id=$(NODE_NAME)"
+            - "--v=5"
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          envFrom:
+            - secretRef:
+                name: vergeos-credentials
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+              mountPropagation: Bidirectional
+            - name: device-dir
+              mountPath: /dev
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # --- NAS Node Driver Registrar ---
+        - name: nas-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.12.0
+          args:
+            - "--csi-address=/csi-nas/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-nas.verge.io/csi.sock"
+            - "--v=5"
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+            - name: registration-dir
+              mountPath: /registration
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+
+        # --- Block Node Driver Registrar ---
+        - name: block-registrar
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.12.0
+          args:
+            - "--csi-address=/csi-block/csi.sock"
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-block.verge.io/csi.sock"
+            - "--v=5"
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+            - name: registration-dir
+              mountPath: /registration
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+
+        # --- Liveness Probe (monitors NAS driver) ---
+        - name: liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+          args:
+            - "--csi-address=/csi-nas/csi.sock"
+            - "--http-endpoint=:9808"
+          volumeMounts:
+            - name: nas-socket-dir
+              mountPath: /csi-nas
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+
+        # --- Liveness Probe (monitors Block driver) ---
+        - name: liveness-probe-block
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+          args:
+            - "--csi-address=/csi-block/csi.sock"
+            - "--http-endpoint=:9809"
+          volumeMounts:
+            - name: block-socket-dir
+              mountPath: /csi-block
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+
+      volumes:
+        # NAS driver socket directory
+        - name: nas-socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-nas.verge.io/
+            type: DirectoryOrCreate
+
+        # Block driver socket directory
+        - name: block-socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-block.verge.io/
+            type: DirectoryOrCreate
+
+        # kubelet plugin registration directory
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: DirectoryOrCreate
+
+        # Pod mount directory (Bidirectional propagation)
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
+
+        # Device directory (for block device discovery)
+        - name: device-dir
+          hostPath:
+            path: /dev
+            type: Directory

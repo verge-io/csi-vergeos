@@ -1,0 +1,28 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vergeos-nas
+provisioner: csi-nas.verge.io
+parameters:
+  # Name of the VergeOS NAS service to create volumes on.
+  nasServiceName: "k8s-nas"
+  # IP address of the NAS service (for NFS mounting).
+  # If omitted, the driver attempts to look up the IP via the VergeOS API.
+  # nasServiceIP: "10.0.0.5"
+  # Preferred storage tier (1-5). Default: 1.
+  preferredTier: "1"
+reclaimPolicy: Delete
+allowVolumeExpansion: false
+volumeBindingMode: Immediate
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: vergeos-block
+provisioner: csi-block.verge.io
+parameters:
+  # VM drive interface type. Default: virtio-scsi.
+  interface: "virtio-scsi"
+reclaimPolicy: Delete
+allowVolumeExpansion: false
+volumeBindingMode: Immediate

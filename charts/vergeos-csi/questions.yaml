@@ -1,0 +1,74 @@
+questions:
+  - variable: vergeos.host
+    label: VergeOS Host URL
+    description: "Full URL including scheme (e.g. https://10.8.8.26)"
+    type: string
+    required: true
+    group: "VergeOS Connection"
+
+  - variable: vergeos.apiKey
+    label: API Key
+    description: "VergeOS API key for authentication"
+    type: password
+    required: true
+    group: "VergeOS Connection"
+
+  - variable: vergeos.verifySSL
+    label: Verify SSL
+    description: "Verify SSL certificates for VergeOS API"
+    type: enum
+    default: "false"
+    options:
+      - "true"
+      - "false"
+    group: "VergeOS Connection"
+
+  - variable: vergeos.existingSecret
+    label: Existing Secret
+    description: "Name of an existing Secret with VergeOS credentials (overrides above fields)"
+    type: string
+    group: "VergeOS Connection"
+
+  - variable: nas.enabled
+    label: Enable NAS Driver
+    description: "Deploy the NAS (NFS/EXT4) CSI driver"
+    type: boolean
+    default: true
+    group: "NAS Driver"
+    show_subquestion_if: true
+    subquestions:
+      - variable: nas.storageClass.name
+        label: StorageClass Name
+        type: string
+        default: "vergeos-nas"
+      - variable: nas.storageClass.nasServiceName
+        label: NAS Service Name
+        description: "Name of the VergeOS NAS service (auto-created if not found)"
+        type: string
+        default: "k8s-nas"
+
+  - variable: block.enabled
+    label: Enable Block Driver
+    description: "Deploy the Block (VM drive) CSI driver"
+    type: boolean
+    default: true
+    group: "Block Driver"
+    show_subquestion_if: true
+    subquestions:
+      - variable: block.poolVmId
+        label: Pool VM ID
+        description: "VergeOS VM ID ($key) of the empty VM used as a holding area for unattached drives"
+        type: string
+        required: true
+        default: "0"
+      - variable: block.storageClass.name
+        label: StorageClass Name
+        type: string
+        default: "vergeos-block"
+      - variable: block.storageClass.interface
+        label: Disk Interface
+        type: enum
+        default: "virtio-scsi"
+        options:
+          - "virtio-scsi"
+          - "virtio"

@@ -1,0 +1,69 @@
+package driver
+
+import (
+	"context"
+	"testing"
+
+	"github.com/container-storage-interface/spec/lib/go/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+func TestNodeService_NoBackend(t *testing.T) {
+	ns := &NodeService{nodeID: "test-node"}
+
+	_, err := ns.NodePublishVolume(context.Background(), &csi.NodePublishVolumeRequest{})
+	if err == nil {
+		t.Fatal("expected error when no backend is set")
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.Unimplemented {
+		t.Errorf("expected Unimplemented, got %v", err)
+	}
+}
+
+func TestNodeService_GetInfo(t *testing.T) {
+	ns := &NodeService{nodeID: "test-node-123"}
+
+	resp, err := ns.NodeGetInfo(context.Background(), &csi.NodeGetInfoRequest{})
+	if err != nil {
+		t.Fatalf("NodeGetInfo failed: %v", err)
+	}
+	if resp.NodeId != "test-node-123" {
+		t.Errorf("NodeId = %q, want %q", resp.NodeId, "test-node-123")
+	}
+}
+
+type mockNodeBackend struct {
+	publishCalled bool
+}
+
+func (m *mockNodeBackend) NodeStageVolume(_ context.Context, _ *csi.NodeStageVolumeRequest) (*csi.NodeStageVolumeResponse, error) {
+	return &csi.NodeStageVolumeResponse{}, nil
+}
+func (m *mockNodeBackend) NodeUnstageVolume(_ context.Context, _ *csi.NodeUnstageVolumeRequest) (*csi.NodeUnstageVolumeResponse, error) {
+	return &csi.NodeUnstageVolumeResponse{}, nil
+}
+func (m *mockNodeBackend) NodePublishVolume(_ context.Context, _ *csi.NodePublishVolumeRequest) (*csi.NodePublishVolumeResponse, error) {
+	m.publishCalled = true
+	return &csi.NodePublishVolumeResponse{}, nil
+}
+func (m *mockNodeBackend) NodeUnpublishVolume(_ context.Context, _ *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
+	return &csi.NodeUnpublishVolumeResponse{}, nil
+}
+func (m *mockNodeBackend) NodeGetCapabilities() []*csi.NodeServiceCapability {
+	return nil
+}
+
+func TestNodeService_DelegatesToBackend(t *testing.T) {
+	mock := &mockNodeBackend{}
+	ns := &NodeService{nodeID: "test-node", backend: mock}
+
+	_, err := ns.NodePublishVolume(context.Background(), &csi.NodePublishVolumeRequest{})
+	if err != nil {
+		t.Fatalf("NodePublishVolume failed: %v", err)
+	}
+	if !mock.publishCalled {
+		t.Error("expected NodePublishVolume to delegate to backend")
+	}
+}

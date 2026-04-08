@@ -1,0 +1,66 @@
+image:
+  repository: ghcr.io/verge-io/csi-vergeos
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+# - name: ghcr-credentials
+
+vergeos:
+  # Full URL including scheme, e.g. https://10.8.8.26
+  host: ""
+  apiKey: ""
+  verifySSL: "true"
+  existingSecret: ""
+
+# NAS driver settings
+nas:
+  enabled: true
+  storageClass:
+    enabled: true
+    name: vergeos-nas
+    nasServiceName: "k8s-nas"
+    # nasServiceIP: ""
+    preferredTier: "1"
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+
+# Block driver settings
+block:
+  enabled: true
+  poolVmId: "0"
+  storageClass:
+    enabled: true
+    name: vergeos-block
+    interface: "virtio-scsi"
+    reclaimPolicy: Delete
+    volumeBindingMode: Immediate
+
+# Sidecar image versions
+sidecars:
+  provisioner:
+    image: registry.k8s.io/sig-storage/csi-provisioner:v5.1.0
+  attacher:
+    image: registry.k8s.io/sig-storage/csi-attacher:v4.7.0
+  registrar:
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.12.0
+  liveness:
+    image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+
+controller:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+node:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+logLevel: 5

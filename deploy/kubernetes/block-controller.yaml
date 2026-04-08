@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-vergeos-block-controller
+  namespace: kube-system
+  labels:
+    app: csi-vergeos-block-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: csi-vergeos-block-controller
+  template:
+    metadata:
+      labels:
+        app: csi-vergeos-block-controller
+    spec:
+      serviceAccountName: csi-vergeos
+      containers:
+        # CSI driver - Block controller mode
+        - name: csi-vergeos
+          image: vergeio/csi-vergeos:latest
+          args:
+            - "--driver=block"
+            - "--mode=controller"
+            - "--endpoint=unix:///csi/csi.sock"
+            - "--pool-vm-id=$(POOL_VM_ID)"
+            - "--v=5"
+          env:
+            - name: POOL_VM_ID
+              value: "0" # SET THIS to your VergeOS storage pool VM ID
+          envFrom:
+            - secretRef:
+                name: vergeos-credentials
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # CSI provisioner sidecar
+        - name: csi-provisioner
+          image: registry.k8s.io/sig-storage/csi-provisioner:v5.1.0
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--v=5"
+            - "--leader-election"
+            - "--leader-election-namespace=kube-system"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # CSI attacher sidecar (block needs attach/detach)
+        - name: csi-attacher
+          image: registry.k8s.io/sig-storage/csi-attacher:v4.7.0
+          args:
+            - "--csi-address=/csi/csi.sock"
+            - "--v=5"
+            - "--leader-election"
+            - "--leader-election-namespace=kube-system"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+        # Liveness probe sidecar
+        - name: liveness-probe
+          image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+          args:
+            - "--csi-address=/csi/csi.sock"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
